@@ -133,7 +133,7 @@ class K8sJobEvaluator(
         }
         metadata.remove(NAME)
         if (!metadata.containsKey(GENERATE_NAME)) {
-            var generateName = "verify-$application-$environment-$version"
+            var generateName = "verify-$application-$environment-$version".replace('~', '-')
             verification.jobNamePrefix?.let {
                 generateName = "$it-$generateName"
             }
@@ -173,7 +173,7 @@ class K8sJobEvaluator(
         }
         // apply verifyWith specific labels
         labels[VERIFICATION_ENVIRONMENT_LABEL] = environment
-        labels[VERIFICATION_ARTIFACT_LABEL] = artifactVersion
+        labels[VERIFICATION_ARTIFACT_LABEL] = artifactVersion.replace('~','-')
 
         metadata[LABELS] = labels
     }
