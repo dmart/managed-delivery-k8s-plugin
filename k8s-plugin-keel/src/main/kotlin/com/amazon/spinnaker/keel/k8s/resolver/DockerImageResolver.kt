@@ -19,6 +19,7 @@ import com.amazon.spinnaker.keel.k8s.exception.*
 import com.amazon.spinnaker.keel.k8s.model.ClouddriverDockerImage
 import com.amazon.spinnaker.keel.k8s.model.K8sResourceSpec
 import com.amazon.spinnaker.keel.k8s.service.CloudDriverK8sService
+import com.amazon.spinnaker.keel.k8s.service.DockerV2Service
 import com.netflix.spinnaker.keel.api.Resource
 import com.netflix.spinnaker.keel.artifacts.DockerArtifact
 import com.netflix.spinnaker.keel.clouddriver.CloudDriverCache
@@ -35,7 +36,8 @@ class DockerImageResolver(
     repository: KeelRepository,
     private val cloudDriverCache: CloudDriverCache,
     private val cloudDriverService: CloudDriverService,
-    private val cloudDriverK8sService: CloudDriverK8sService
+    private val cloudDriverK8sService: CloudDriverK8sService,
+    private val dockerV2Service: DockerV2Service,
 ) : DockerImageResolver<K8sResourceSpec>(
     repository
 ) {
@@ -70,9 +72,7 @@ class DockerImageResolver(
 
     override fun getDigest(account: String, artifact: DockerArtifact, tag: String) =
         runBlocking {
-            val images = cloudDriverService.findDockerImages(account, artifact.name, tag)
-            val img = images.firstOrNull() ?: throw NoDigestFound(artifact.name, tag)
-            img.digest ?: ""
+            dockerV2Service.getDigest(artifact.name, tag).config.digest
         }
 
     private fun setValue(m: MutableMap<String, Any>, key: String, reference: String, value: String) : MutableMap<*, *> {
@@ -144,7 +144,17 @@ class DockerImageResolver(
             images.forEach {
                 if (it.account == account && it.repository == artifact.name && it.tag == tag) {
                     logger.debug("found docker image $it")
-                    return@runBlocking it
+                    val digest = dockerV2Service.getDigest(artifact.name, tag)
+
+                    val metadata = it.artifact.metadata.copy(
+                        labels = dockerV2Service.getDigestContent(artifact.name, digest.config.digest).config.Labels
+                    )
+                    val completeArtifact = it.artifact.copy(metadata = metadata)
+
+                    return@runBlocking it.copy(
+                        digest = digest.config.digest,
+                        artifact = completeArtifact
+                    )
                 }
             }
             throw DockerImageNotFound(account, artifact.name, tag)
